@@ -2,71 +2,43 @@
 
 **인터 블록 체인 통신 프로토콜 사양에서 사용되는 디자인 패턴에 대한 설명입니다.**
 
-**For definitions of terms used in IBC specifications, see [here](./1_IBC_TERMINOLOGY.md).**
+**IBC 사양에 사용되는 용어에 대한 정의는 [여기를](./1_IBC_TERMINOLOGY.md) 참조 하십시오.**
 
-**For an architectural overview, see [here](./2_IBC_ARCHITECTURE.md).**
+**아키텍처 개요는 [여기를](./2_IBC_ARCHITECTURE.md) 참조 하십시오.**
 
-**For a broad set of protocol design principles, see [here](./3_IBC_DESIGN_PRINCIPLES.md).**
+**광범위한 프로토콜 설계 원칙에 대해서는 [여기를](./3_IBC_DESIGN_PRINCIPLES.md) 참조 하십시오.**
 
-**For a set of example use cases, see [here](./4_IBC_USECASES.md).**
+**사용 사례의 예는 [여기를](./4_IBC_USECASES.md) 참조 하십시오.**
 
-## Verification instead of computation
+## 계산(computation) 대신 검증(verification)
 
-Computation on distributed ledgers is expensive: any computations performed
-in the IBC handler must be replicated across all full nodes. Therefore, when it
-is possible to merely *verify* a computational result instead of performing the
-computation, the IBC handler should elect to do so and require extra parameters as necessary.
+분산 원장에서 계산은 비용이 많이 듭니다. IBC 핸들러에서 수행되는 계산은 모든 전체 노드에 복제되어야합니다. 따라서 계산을 수행하는 대신 계산 결과를 단순히 *검증*할 수 있는 경우 IBC 핸들러는 이를 수행하도록 선택하고 필요에 따라 추가 매개 변수를 요구해야합니다.
 
-In some cases, there is no cost difference - adding two numbers and checking that two numbers sum to
-a particular value both require one addition, so the IBC handler should elect to do whatever is simpler.
-However, in other cases, performing the computation may be much more expensive. For example, connection
-and channel identifiers must be uniquely generated. This could be implemented by
-the IBC handler hashing the genesis state plus a nonce when a new channel is created, to create
-a pseudorandom identifier - but that requires computing a hash function on-chain, which is expensive.
-Instead, the IBC handler should require that the random identifier generation be performed
-off-chain and merely check that a new channel creation attempt doesn't use a previously
-reserved identifier.
+ 어떤 경우에는 비용 차이가 없습니다. 예를 들어 두 숫자를 더하는 것과 두 숫자의 합을 특정 값과 비교하는 것 모두 하나의 덧셈만을 필요로 하기때문에, IBC 핸들러는 더 간단한 작업을 수행하도록 선택해야합니다.
+ 그러나 다른 경우에는 계산을 수행하는 것이 훨씬 비쌀 수 있습니다. 예를 들어, 연결 및 채널 식별자는 고유하게 생성되어야합니다. 이것은 의사 난수 식별자를 생성하기 위해 새로운 채널이 생성 될 때 발생 상태와 nonce를 합쳐서 해싱하는 IBC 핸들러에 의해 구현 될 수 있지만, 체인 내에서(on-chian) 해시 함수를 계산해야하므로 비용이 많이 듭니다. 이 방법 대신, IBC 핸들러는 랜덤 식별자 생성을 체인 밖에서(off-chain) 수행해야하며 새로운 채널 생성 시도가 이전에 예약 된 식별자를 사용하지 않는지 확인하는 것만 해야합니다.
 
-## Call receiver
+## 호출 리시버(Call receievr)
 
-Essential to the functionality of the IBC handler is an interface to other modules
-running on the same machine, so that it can accept requests to send packets and can
-route incoming packets to modules. This interface should be as minimal as possible
-in order to reduce implementation complexity and requirements imposed on host state machines.
+IBC 핸들러 기능의 핵심은 동일한 기계에서 실행중인 다른 모듈에 대한 인터페이스이므로 패킷 전송 요청을 수락하고 수신 패킷을 모듈로 라우팅 할 수 있습니다. 호스트 상태 머신에 부과되는 구현 복잡성 및 요구 사항을 줄이려면 인터페이스가 가능한 한 최소화되어야합니다.
 
-For this reason, the core IBC logic uses a receive-only call pattern that differs
-slightly from the intuitive dataflow. As one might expect, modules call into the IBC handler to create
-connections, channels, and send packets. However, instead of the IBC handler, upon receipt
-of a packet from another chain, selecting and calling into the appropriate module,
-the module itself must call `recvPacket` on the IBC handler (likewise for accepting
-channel creation handshakes). When `recvPacket` is called, the IBC handler will check
-that the calling module is authorised to receive and process the packet (based on included proofs and
-known state of connections / channels), perform appropriate state updates (incrementing
-sequence numbers to prevent replay), and return control to the module or throw on error.
-The IBC handler never calls into modules directly.
+이러한 이유로 코어 IBC 로직은 직관적인 데이터 흐름과 약간 다른 수신 전용 호출 패턴을 사용합니다. 누군가는 예상했겠지만, 모듈은 IBC 핸들러를 호출하여 연결, 채널을 생성하고 패킷을 보냅니다. 그러나 IBC 핸들러 대신 다른 체인에서 패킷을 수신하고 적절한 모듈을 선택하여 호출하면 모듈 자체는 IBC 핸들러에서 `recvPacket` 을 호출해야합니다 (채널 생성 핸드 셰이크 승인과 동일). `recvPacket` 이 호출되면 IBC 핸들러는 호출 모듈이 패킷을 수신 및 처리 할 수 있는지 (포함 된 증명 및 알려진 연결 / 채널 상태에 기반하여) 확인하고, 적절한 상태 업데이트 (다시하기를 방지하기 위해 시퀀스 번호 증가)를 수행하고, 모듈 컨트롤로 돌아가거나 에러를 발생시킵니다. IBC 핸들러는 모듈을 절대 직접 호출하지 않습니다.
 
-Although a bit counterintuitive to reason about at first, this pattern has a few notable advantages:
+비록 처음에는 약간 직관적이지 않지만, 이 패턴에는 몇 가지 주목할만한 장점이 있습니다.
 
 - IBC 핸들러는 다른 모듈을 호출하거나 참조를 저장하는 방법을 이해할 필요가 없으므로 호스트 상태 머신의 요구 사항을 최소화합니다.
-- It avoids the necessity of managing a module lookup table in the handler state.
-- It avoids the necessity of dealing with module return data or failures. If a module does not want toreceive a packet (perhaps having implemented additional authorisation on top), it simply never calls`recvPacket`. If the routing logic were implemented in the IBC handler, the handler would need to dealwith the failure of the module, which is tricky to interpret.
+- 핸들러 state로 모듈 lookup 테이블을 관리 할 필요가 없습니다.
+- 모듈 리턴 데이터 혹은 실패에 대해서 처리 할 필요가 없습니다. 모듈이 패킷을 수신하지 않으려는 경우 (아마도 추가 인증을 구현 한 경우) 단순히 `recvPacket` 호출하지 않습니다. 라우팅 로직이 IBC 핸들러에서 구현 된 경우 핸들러는 모듈의 장애를 처리해야하므로 해석하기가 까다 롭습니다.
 
-It also has one notable disadvantage:
+또 한 가지 주목할만한 단점이 있습니다.
 
-- Without an additional abstraction, the relayer logic becomes more complex, since off-chainrelayer processes will need to track the state of multiple modules to determine when packetscan be submitted.
+- 추가 추상화가 없으면 오프 체인 Relayer 프로세스가 패킷을 보낼 수있는 시점을 결정하기 위해 여러 모듈의 상태를 추적해야하므로 Relayer 로직이 더욱 복잡해집니다.
 
-For this reason, there is an additional IBC "routing module" which exposes a call dispatch interface.
+이러한 이유로, 호출 디스패치 인터페이스를 제공하는 "라우팅 모듈"이라는  추가 IBC가 있습니다.
 
-## Call dispatch
+## 호출 디스패치
 
-For common relay patterns, an "IBC routing module" can be implemented which maintains a module dispatch table and simplifies the job of relayers.
+일반적인 중계 패턴(relay pattern)의 경우, 모듈 디스패치 테이블을 유지하고 Relayer의 작업을 단순화하는 "IBC 라우팅 모듈"을 구현할 수 있습니다.
 
-In the call dispatch pattern, datagrams (contained within transaction types defined by the host state machine) are relayed directly
-to the routing module, which then looks up the appropriate module (owning the channel & port to which the datagram was addressed)
-and calls an appropriate function (which must have been previously registered with the routing module). This allows modules to
-avoid handling datagrams directly, and makes it harder to accidentally screw-up the atomic state transition execution which must
-happen in conjunction with sending or receiving a packet (since the module never handles packets directly, but rather exposes
-functions which are called by the routing module upon receipt of a valid packet).
+호출 디스패치 패턴에서, 데이터그램 (호스트 상태 머신에 의해 정의 된 트랜잭션 유형 내에 포함됨)은 라우팅 모듈로 직접 중계 된 다음 적절한 모듈 (데이터그램이 전송 된 채널 및 포트 가진 모듈)을 찾고 적절한 기능(이전에 라우팅 모듈에 등록되어 있어야 함)을 호출합니다 . 이를 통해 모듈은 데이터그램을 직접 처리하는 것을 피할 수 있으며, 패킷을 보내거나받는 것과 관련하여 발생해야하는 원자 상태 전이 실행(atomic state transition execution)을 실수로 망치는 것을 어렵게 만듭니다 (모듈은 패킷을 직접 처리하지 않고 유효한 패킷을 수신하면 라우팅 모듈에 의해 호출되는 함수만 제공하기 때문에).
 
-Additionally, the routing module can implement default logic for handshake datagram handling (accepting incoming handshakes
-on behalf of modules), which is convenient for modules which do not need to implement their own custom logic.
+또한 라우팅 모듈은 핸드 셰이크 데이터그램 처리를위한 기본 로직 (모듈 대신 수신 핸드 셰이크 허용)을 구현할 수 있으며, 이는 고유한 커스텀 로직을 구현할 필요가 없는 모듈에 편리합니다.
